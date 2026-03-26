@@ -1,0 +1,29 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Local data (optional: uncomment if you don’t want expenses in the repo)
+# expenses.json
+
+# Large / generated (keep scripts, ignore huge binaries if added later)
+*.dylib

@@ -1,0 +1,110 @@
+[
+  {
+    "merchant": "ERE a ar at",
+    "date": "15/03/2026",
+    "items": [
+      {
+        "product": "7 SU1 HIKARI ION SUPPLY DRINK PEAC",
+        "price": "1600.00",
+        "needs_review": false
+      }
+    ],
+    "subtotal": "",
+    "tax": "1.00",
+    "total": "1.00"
+  },
+  {
+    "merchant": "Sup eee tet",
+    "date": "",
+    "items": [
+      {
+        "product": "2 APPLE",
+        "price": "1.00",
+        "needs_review": false
+      },
+      {
+        "product": "3 BANANA",
+        "price": "1.50",
+        "needs_review": false
+      },
+      {
+        "product": "2 ORANGE",
+        "price": "1.20",
+        "needs_review": false
+      },
+      {
+        "product": "1 PEAR",
+        "price": "0.75",
+        "needs_review": false
+      },
+      {
+        "product": "2 GRAPES",
+        "price": "3.00",
+        "needs_review": false
+      },
+      {
+        "product": "1 STRAWBERRY",
+        "price": "2.50",
+        "needs_review": false
+      },
+      {
+        "product": "1 BLUEBERRY",
+        "price": "2.00",
+        "needs_review": false
+      },
+      {
+        "product": "2 KIWI",
+        "price": "1.80",
+        "needs_review": false
+      },
+      {
+        "product": "1 WATERMELON",
+        "price": "4.50",
+        "needs_review": false
+      },
+      {
+        "product": "1 LEMON",
+        "price": "0.60",
+        "needs_review": false
+      },
+      {
+        "product": "1 RASPBERRY",
+        "price": "3.00",
+        "needs_review": false
+      },
+      {
+        "product": "1 MILK",
+        "price": "1.50",
+        "needs_review": false
+      },
+      {
+        "product": "1 CHEESE",
+        "price": "2.80",
+        "needs_review": false
+      },
+      {
+        "product": "1 YOGURT",
+        "price": "1.20",
+        "needs_review": false
+      },
+      {
+        "product": "CASH",
+        "price": "30.00",
+        "needs_review": false
+      },
+      {
+        "product": "CHANGE",
+        "price": "2.65",
+        "needs_review": false
+      },
+      {
+        "product": "Line item 19",
+        "price": "0.00",
+        "needs_review": false
+      }
+    ],
+    "subtotal": "",
+    "tax": "",
+    "total": "27.35"
+  }
+]

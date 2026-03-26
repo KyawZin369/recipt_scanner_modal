@@ -1,0 +1,20 @@
+# AI Scanner Project - Python (API = model-only for Flutter)
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+pytesseract>=0.3.10
+numpy>=1.24.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+python-multipart>=0.0.6
+streamlit>=1.28.0
+pandas>=1.5.0
+scikit-learn>=1.2.0
+joblib>=1.2.0
+
+# Optional: TensorFlow (for custom AI models; scanner uses sklearn on macOS to avoid crashes)
+# tensorflow>=2.12.0
+
+# Optional: for AI text generation from scanned content
+# Uncomment if you want local summarization/generation
+# transformers>=4.30.0
+# torch>=2.0.0
