@@ -5,6 +5,9 @@ Output is structured for expense tracking.
 """
 import json
 import re
+import os
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, asdict
@@ -13,9 +16,29 @@ import cv2
 import numpy as np
 import pytesseract
 from PIL import Image
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 # Expense storage path
 EXPENSES_PATH = Path(__file__).resolve().parent / "expenses.json"
+
+# Reused Mongo client (pool) — avoids opening/closing TCP + TLS on every /receipts call
+_mongo_client: Optional[MongoClient] = None
+_last_mongo_error: str = ""
+
+
+def _mongo_settings() -> tuple[str, str, str]:
+    """
+    Read MongoDB settings at call time so runtime-loaded .env values are used.
+    """
+    mongo_uri = os.getenv("MONGO_URI", "").strip()
+    mongo_db_name = os.getenv("MONGO_DB_NAME", "expenses").strip() or "expenses"
+    mongo_collection_name = os.getenv("MONGO_COLLECTION_NAME", "receipts").strip() or "receipts"
+    return mongo_uri, mongo_db_name, mongo_collection_name
+
+
+def _marts_collection_name() -> str:
+    return os.getenv("MONGO_MARTS_COLLECTION", "marts").strip() or "marts"
 
 # Strict price pattern: X.XX or X.X (1–2 decimals).
 PRICE_PATTERN = re.compile(r"^\$?(\d{1,6}\.\d{1,2})$")
@@ -52,6 +75,9 @@ class ReceiptData:
     currency: str  # Detected from receipt (e.g. Ks, USD, EUR)
     raw_text: str
     warnings: list
+    image_url: str = ""
+    mart_id: str = ""  # optional; links to marts.id (1 mart : many receipts)
+    mart_name: str = ""  # denormalized for list display
 
 
 def _preprocess_receipt(image: np.ndarray) -> np.ndarray:
@@ -140,6 +166,21 @@ def _ocr_receipt_all_fonts(image: np.ndarray) -> str:
             seen.add(key)
             merged.append(line)
     return "\n".join(merged)
+
+
+def _ocr_receipt_fast(image: np.ndarray) -> str:
+    """Single-pass OCR for speed; slightly less robust than multi-pass. Set FAST_RECEIPT_OCR=1."""
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = image
+    h, w = gray.shape[:2]
+    if h < 900:
+        scale = 900 / h
+        gray = cv2.resize(gray, (int(w * scale), 900), interpolation=cv2.INTER_CUBIC)
+    gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    return _run_receipt_ocr(thresh, psm=6)
 
 
 def _strict_price(s: str) -> Optional[str]:
@@ -383,10 +424,23 @@ def extract_receipt(image_input) -> ReceiptData:
     elif isinstance(image_input, np.ndarray):
         image = image_input
     else:
-        return ReceiptData(merchant="", date="", items=[], subtotal="", tax="", total="", currency="", raw_text="", warnings=["Invalid input"])
+        return ReceiptData(
+            merchant="",
+            date="",
+            items=[],
+            subtotal="",
+            tax="",
+            total="",
+            currency="",
+            raw_text="",
+            warnings=["Invalid input"],
+        )
 
-    # Multi-pass OCR for many fonts (thermal, dot-matrix, printed, etc.)
-    ocr_text = _ocr_receipt_all_fonts(image)
+    # Multi-pass OCR by default; set FAST_RECEIPT_OCR=1 for lower latency.
+    if os.getenv("FAST_RECEIPT_OCR", "").lower() in ("1", "true", "yes"):
+        ocr_text = _ocr_receipt_fast(image)
+    else:
+        ocr_text = _ocr_receipt_all_fonts(image)
     word_data = []  # Merged text has no word-level data; parse from lines
 
     items, warnings = _parse_receipt_lines(ocr_text, word_data)
@@ -406,13 +460,19 @@ def extract_receipt(image_input) -> ReceiptData:
         tax=tax,
         total="",  # Not scanned
         currency=currency,
+        image_url="",
         raw_text=ocr_text,
         warnings=warnings,
+        mart_id="",
+        mart_name="",
     )
 
 
 def load_expenses() -> list:
-    """Load expense list from JSON file."""
+    """Load expense list from MongoDB, or fallback JSON file."""
+    mongo_expenses = _load_expenses_from_mongo()
+    if mongo_expenses is not None:
+        return mongo_expenses
     if not EXPENSES_PATH.is_file():
         return []
     try:
@@ -427,9 +487,125 @@ def save_expenses(expenses: list) -> None:
     EXPENSES_PATH.write_text(json.dumps(expenses, indent=2), encoding="utf-8")
 
 
-def add_receipt_to_expenses(receipt: ReceiptData) -> None:
+def get_last_mongo_error() -> str:
+    """Last Mongo failure message (for API 503 responses)."""
+    return _last_mongo_error
+
+
+def set_last_mongo_error(message: str) -> None:
+    """Set last error (e.g. from auth_users when users collection fails)."""
+    global _last_mongo_error
+    _last_mongo_error = (message or "").strip()
+
+
+def close_mongo_client() -> None:
+    """Close pooled Mongo client (call on app shutdown)."""
+    global _mongo_client, _last_mongo_error
+    if _mongo_client is not None:
+        try:
+            _mongo_client.close()
+        except Exception:
+            pass
+        _mongo_client = None
+    _last_mongo_error = ""
+
+
+def _get_mongo_collection():
+    """
+    Return PyMongo collection handle using a pooled client, or None on failure.
+    Sets _last_mongo_error on failure.
+    """
+    global _mongo_client, _last_mongo_error
+    mongo_uri, mongo_db_name, mongo_collection_name = _mongo_settings()
+    if not mongo_uri:
+        _last_mongo_error = (
+            "MONGO_URI is not set. Add it to the `.env` next to `api.py` "
+            "or export MONGO_URI before starting uvicorn."
+        )
+        return None
+    if _mongo_client is None:
+        try:
+            _mongo_client = MongoClient(
+                mongo_uri,
+                serverSelectionTimeoutMS=8000,
+                connectTimeoutMS=8000,
+                socketTimeoutMS=60000,
+                maxPoolSize=20,
+                retryWrites=True,
+            )
+            _mongo_client.admin.command("ping")
+        except PyMongoError as e:
+            msg = str(e).strip()
+            if len(msg) > 400:
+                msg = msg[:400] + "…"
+            _last_mongo_error = f"MongoDB connection failed: {msg}"
+            if _mongo_client is not None:
+                try:
+                    _mongo_client.close()
+                except Exception:
+                    pass
+                _mongo_client = None
+            return None
+        _last_mongo_error = ""
+    try:
+        return _mongo_client[mongo_db_name][mongo_collection_name]
+    except Exception as e:
+        _last_mongo_error = f"MongoDB database/collection error: {e}"
+        return None
+
+
+def _load_expenses_from_mongo(
+    user_id: Optional[str] = None,
+    mart_id: Optional[str] = None,
+):
+    """Load expense list from MongoDB. If user_id is set, only that user's receipts (1:N)."""
+    global _last_mongo_error
+    collection = _get_mongo_collection()
+    if collection is None:
+        return None
+    try:
+        query: dict = {}
+        if user_id:
+            query["user_id"] = user_id
+        mid = (mart_id or "").strip()
+        if mid:
+            query["mart_id"] = mid
+        return list(collection.find(query, {"_id": 0}))
+    except PyMongoError as e:
+        msg = str(e).strip()
+        if len(msg) > 400:
+            msg = msg[:400] + "…"
+        _last_mongo_error = f"MongoDB query failed: {msg}"
+        return None
+
+
+def load_expenses_from_mongo_only(
+    user_id: Optional[str] = None,
+    mart_id: Optional[str] = None,
+):
+    """
+    Load receipts strictly from MongoDB.
+    If user_id is provided, only receipts belonging to that user.
+    If mart_id is provided, only receipts linked to that mart (1 mart : many receipts).
+    Returns None when MongoDB is unavailable or not configured.
+    """
+    return _load_expenses_from_mongo(user_id=user_id, mart_id=mart_id)
+
+
+def _save_receipt_to_mongo(entry: dict) -> bool:
+    """Insert one receipt into MongoDB; return True on success."""
+    collection = _get_mongo_collection()
+    if collection is None:
+        return False
+    try:
+        collection.insert_one(entry)
+        return True
+    except PyMongoError:
+        return False
+
+
+def add_receipt_to_expenses(receipt: ReceiptData, user_id: Optional[str] = None) -> None:
     """Append one receipt's items to expenses. Prices are stored exactly as extracted."""
-    expenses = load_expenses()
     entry = {
         "merchant": receipt.merchant,
         "date": receipt.date,
@@ -437,6 +613,87 @@ def add_receipt_to_expenses(receipt: ReceiptData) -> None:
         "subtotal": receipt.subtotal,
         "tax": receipt.tax,
         "currency": getattr(receipt, "currency", ""),
+        "image_url": getattr(receipt, "image_url", "") or "",
     }
+    mid = (getattr(receipt, "mart_id", "") or "").strip()
+    mname = (getattr(receipt, "mart_name", "") or "").strip()
+    if mid:
+        entry["mart_id"] = mid
+    if mname:
+        entry["mart_name"] = mname
+    if user_id:
+        entry["user_id"] = user_id
+    if _save_receipt_to_mongo(entry):
+        return
+    expenses = load_expenses()
     expenses.append(entry)
     save_expenses(expenses)
+
+
+def _get_marts_collection():
+    """Same Mongo pool as receipts; collection name from MONGO_MARTS_COLLECTION (default `marts`)."""
+    if _get_mongo_collection() is None:
+        return None
+    _, mongo_db_name, _ = _mongo_settings()
+    try:
+        return _mongo_client[mongo_db_name][_marts_collection_name()]
+    except Exception as e:
+        global _last_mongo_error
+        _last_mongo_error = f"MongoDB marts collection error: {e}"
+        return None
+
+
+def list_marts_from_mongo(user_id: Optional[str] = None):
+    """Return marts for a user (1 user : many marts). If user_id is None, returns all (legacy tools)."""
+    global _last_mongo_error
+    collection = _get_marts_collection()
+    if collection is None:
+        return None
+    try:
+        query = {"user_id": user_id} if user_id else {}
+        return list(collection.find(query, {"_id": 0}).sort("name", 1))
+    except PyMongoError as e:
+        msg = str(e).strip()
+        if len(msg) > 400:
+            msg = msg[:400] + "…"
+        _last_mongo_error = f"MongoDB marts query failed: {msg}"
+        return None
+
+
+def get_mart_for_user(user_id: str, mart_id: str) -> Optional[dict]:
+    """Return a mart document if it exists and belongs to user_id."""
+    mid = (mart_id or "").strip()
+    if not mid:
+        return None
+    collection = _get_marts_collection()
+    if collection is None:
+        return None
+    try:
+        return collection.find_one({"id": mid, "user_id": user_id}, {"_id": 0})
+    except PyMongoError:
+        return None
+
+
+def create_mart_in_mongo(
+    name: str,
+    description: str,
+    logo_url: str,
+    user_id: str,
+) -> Optional[dict]:
+    """Insert one mart for a user. Returns the document (no _id) or None on failure."""
+    collection = _get_marts_collection()
+    if collection is None:
+        return None
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "name": name.strip(),
+        "description": (description or "").strip(),
+        "logo_url": (logo_url or "").strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        collection.insert_one(doc)
+        return doc
+    except PyMongoError:
+        return None

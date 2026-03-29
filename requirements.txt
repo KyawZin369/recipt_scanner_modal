@@ -10,6 +10,11 @@ streamlit>=1.28.0
 pandas>=1.5.0
 scikit-learn>=1.2.0
 joblib>=1.2.0
+pymongo>=4.8.0
+python-dotenv>=1.0.1
+supabase>=2.0.0
+bcrypt>=4.1.0
+PyJWT>=2.8.0
 
 # Optional: TensorFlow (for custom AI models; scanner uses sklearn on macOS to avoid crashes)
 # tensorflow>=2.12.0

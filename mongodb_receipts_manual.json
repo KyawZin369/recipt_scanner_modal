@@ -1,0 +1,149 @@
+[
+  {
+    "merchant": "City Mart Junction",
+    "date": "2026-03-10",
+    "currency": "MMK",
+    "items": [
+      { "product": "Rice 5kg", "price": "14500.00", "needs_review": false },
+      { "product": "Eggs 12pcs", "price": "4200.00", "needs_review": false },
+      { "product": "Cooking Oil 1L", "price": "6800.00", "needs_review": false }
+    ],
+    "subtotal": "25500.00",
+    "tax": "0.00",
+    "total": "25500.00",
+    "warnings": [],
+    "raw_text": "CITY MART JUNCTION"
+  },
+  {
+    "merchant": "Ocean Supercenter",
+    "date": "2026-03-11",
+    "currency": "MMK",
+    "items": [
+      { "product": "Shampoo 650ml", "price": "7900.00", "needs_review": false },
+      { "product": "Soap Bar x2", "price": "2600.00", "needs_review": false },
+      { "product": "Toothpaste", "price": "3200.00", "needs_review": false }
+    ],
+    "subtotal": "13700.00",
+    "tax": "0.00",
+    "total": "13700.00",
+    "warnings": [],
+    "raw_text": "OCEAN SUPERCENTER"
+  },
+  {
+    "merchant": "GrabFood Delivery",
+    "date": "2026-03-12",
+    "currency": "MMK",
+    "items": [
+      { "product": "Chicken Biryani", "price": "8500.00", "needs_review": false },
+      { "product": "Iced Lemon Tea", "price": "2500.00", "needs_review": false },
+      { "product": "Delivery Fee", "price": "1500.00", "needs_review": false }
+    ],
+    "subtotal": "12500.00",
+    "tax": "0.00",
+    "total": "12500.00",
+    "warnings": [],
+    "raw_text": "GRABFOOD ORDER"
+  },
+  {
+    "merchant": "YKKO Restaurant",
+    "date": "2026-03-13",
+    "currency": "MMK",
+    "items": [
+      { "product": "Mohinga", "price": "3000.00", "needs_review": false },
+      { "product": "Tea", "price": "1000.00", "needs_review": false },
+      { "product": "Fried Tofu", "price": "2500.00", "needs_review": false }
+    ],
+    "subtotal": "6500.00",
+    "tax": "0.00",
+    "total": "6500.00",
+    "warnings": [],
+    "raw_text": "YKKO RECEIPT"
+  },
+  {
+    "merchant": "KBZ Pay Utility",
+    "date": "2026-03-14",
+    "currency": "MMK",
+    "items": [
+      { "product": "Electricity Bill", "price": "18500.00", "needs_review": false },
+      { "product": "Service Fee", "price": "500.00", "needs_review": false }
+    ],
+    "subtotal": "19000.00",
+    "tax": "0.00",
+    "total": "19000.00",
+    "warnings": [],
+    "raw_text": "KBZPAY BILL PAYMENT"
+  },
+  {
+    "merchant": "Denko Fuel Station",
+    "date": "2026-03-15",
+    "currency": "MMK",
+    "items": [
+      { "product": "Ron 92 - 5.0L", "price": "16800.00", "needs_review": false },
+      { "product": "Air Check", "price": "0.00", "needs_review": false }
+    ],
+    "subtotal": "16800.00",
+    "tax": "0.00",
+    "total": "16800.00",
+    "warnings": [],
+    "raw_text": "DENKO STATION"
+  },
+  {
+    "merchant": "Sein Gay Har Pharmacy",
+    "date": "2026-03-16",
+    "currency": "MMK",
+    "items": [
+      { "product": "Paracetamol", "price": "1800.00", "needs_review": false },
+      { "product": "Vitamin C", "price": "3500.00", "needs_review": false },
+      { "product": "Hand Sanitizer", "price": "4200.00", "needs_review": false }
+    ],
+    "subtotal": "9500.00",
+    "tax": "0.00",
+    "total": "9500.00",
+    "warnings": [],
+    "raw_text": "SGH PHARMACY"
+  },
+  {
+    "merchant": "City Express Mart",
+    "date": "2026-03-17",
+    "currency": "MMK",
+    "items": [
+      { "product": "Bottled Water x6", "price": "3600.00", "needs_review": false },
+      { "product": "Instant Noodles x5", "price": "5000.00", "needs_review": false },
+      { "product": "Tissue Pack", "price": "2200.00", "needs_review": false }
+    ],
+    "subtotal": "10800.00",
+    "tax": "0.00",
+    "total": "10800.00",
+    "warnings": [],
+    "raw_text": "CITY EXPRESS MART"
+  },
+  {
+    "merchant": "Yangon Coffee House",
+    "date": "2026-03-18",
+    "currency": "MMK",
+    "items": [
+      { "product": "Latte", "price": "4500.00", "needs_review": false },
+      { "product": "Croissant", "price": "3500.00", "needs_review": false }
+    ],
+    "subtotal": "8000.00",
+    "tax": "0.00",
+    "total": "8000.00",
+    "warnings": [],
+    "raw_text": "YANGON COFFEE HOUSE"
+  },
+  {
+    "merchant": "Aung Mobile Shop",
+    "date": "2026-03-19",
+    "currency": "MMK",
+    "items": [
+      { "product": "Phone Case", "price": "6500.00", "needs_review": false },
+      { "product": "USB-C Cable", "price": "4000.00", "needs_review": false },
+      { "product": "Screen Protector", "price": "3000.00", "needs_review": false }
+    ],
+    "subtotal": "13500.00",
+    "tax": "0.00",
+    "total": "13500.00",
+    "warnings": [],
+    "raw_text": "AUNG MOBILE SHOP"
+  }
+]

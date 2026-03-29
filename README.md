@@ -28,6 +28,7 @@ uvicorn api:app --host 0.0.0.0 --port 8000
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Check if API is up |
+| `POST` | `/storage/receipts/upload` | Upload image to Supabase bucket → `{ image_url, bucket, path }` (multipart field **`file`**) |
 | `POST` | `/scan/receipt` | Upload image (multipart) → receipt JSON (merchant, date, items, total) |
 | `POST` | `/scan/text` | Upload image (multipart) → `{ "text", "summary" }` |
 | `POST` | `/expenses` | Add a receipt to expenses (JSON body) |
@@ -47,7 +48,7 @@ uvicorn api:app --host 0.0.0.0 --port 8000
   ],
   "subtotal": "16.49",
   "tax": "1.65",
-  "total": "18.14",
+  "image_url": "https://....supabase.co/storage/v1/object/public/receipts/...",
   "warnings": [],
   "raw_text": "..."
 }
@@ -83,7 +84,50 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. (Optional) Train the scanner model
+### 3. Configure MongoDB for expense storage
+
+The app can store expenses in MongoDB. Set these environment variables before starting the API:
+
+```bash
+export MONGO_URI="mongodb://localhost:27017"
+export MONGO_DB_NAME="expenses"          # optional (default: expenses)
+export MONGO_COLLECTION_NAME="receipts"  # optional (default: receipts)
+```
+
+If `MONGO_URI` is not set or MongoDB is unavailable, the app falls back to `expenses.json`.
+
+### 3.1 Optional: Store receipt images in Supabase Storage
+
+Receipt images are uploaded to **Supabase Storage**; the public (or signed) URL is returned as `image_url` and saved with expenses in MongoDB.
+
+1. In Supabase: **Storage → New bucket** (e.g. `receipts`). For public URLs in the app, mark the bucket **public** or use signed URLs (see below).
+2. In **Project Settings → API**, copy **Project URL** and **service_role** key (server-side only — never ship this in a client app).
+
+```bash
+export SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+export SUPABASE_STORAGE_BUCKET="receipts"
+```
+
+If the bucket is **private**, use long-lived signed URLs:
+
+```bash
+export SUPABASE_USE_SIGNED_URLS=1
+```
+
+**Performance:** the API keeps a **pooled MongoDB connection** (no new TCP/TLS handshake on every `GET /receipts`). Restart `uvicorn` after changing `.env`.
+
+**Faster receipt OCR (optional):** trade a bit of accuracy for speed:
+
+```bash
+export FAST_RECEIPT_OCR=1
+```
+
+Then start `uvicorn` as usual.
+
+**`GET /receipts` returns 503:** MongoDB is required for that route. Open the response `detail` for the exact error (common: Atlas **Network Access** must allow your IP, wrong password, or `MONGO_URI` not loaded — use `.env` next to `api.py` or export vars before `uvicorn`).
+
+### 4. (Optional) Train the scanner model
 
 Train a small scikit-learn classifier to predict “has text” vs “no text”:
 
@@ -93,7 +137,7 @@ python train_scanner.py
 
 Uses synthetic data by default. For better results, add your own images to `data/with_text/` and `data/no_text/`.
 
-### 4. Run the API (for Flutter)
+### 5. Run the API (for Flutter)
 
 ```bash
 uvicorn api:app --host 0.0.0.0 --port 8000
@@ -101,7 +145,7 @@ uvicorn api:app --host 0.0.0.0 --port 8000
 
 Open http://localhost:8000/docs for interactive API docs.
 
-### 5. (Optional) Run the Streamlit demo UI
+### 6. (Optional) Run the Streamlit demo UI
 
 ```bash
 streamlit run app.py
@@ -110,7 +154,7 @@ streamlit run app.py
 ## Project structure
 
 - **`api.py`** – **REST API (use this from Flutter):** `/scan/receipt`, `/scan/text`, `/expenses`
-- `receipt_scanner.py` – Receipt OCR and parsing; strict prices; expense storage (expenses.json)
+- `receipt_scanner.py` – Receipt OCR and parsing; strict prices; expense storage (MongoDB with JSON fallback)
 - `scanner.py` – Text OCR and summary
 - `app.py` – Streamlit demo UI (optional)
 - `train_scanner.py` – Train “has text” classifier

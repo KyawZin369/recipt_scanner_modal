@@ -14,6 +14,9 @@ build/
 .env
 .env.local
 
+# Google Cloud service account keys (never commit)
+receipt-project-*.json
+
 # IDE
 .idea/
 .vscode/
