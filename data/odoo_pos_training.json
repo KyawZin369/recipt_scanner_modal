@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "description": "Optional overrides only when ENABLE_ODOO_TRAINING=1 (default: scanner ignores this file). Match: sha256_file, match_names basename, sha256_png; keyword fallback needs ENABLE_TRAINING_KEYWORD_FALLBACK=1. Reloads on file mtime change.",
+  "receipts": [
+    {
+      "match_names": ["IMG_1806.jpg", "img_1806.jpg"],
+      "sha256_file": "86e7351dad71cc27892d7deff6a12090bc304964f0761721c16ba00c3cbdf28a",
+      "sha256_png": "e97d36e65c24f1ed735632ae0f2d543cd33634bedeb2bd0830886eb282d37ba5",
+      "ocr_keywords_all": ["city express", "hikari ion supply"],
+      "merchant": "City Express",
+      "address": "No(26), Shan Kone St, Sanchaung Tsp",
+      "items": [
+        {
+          "product": "SU1 HIKARI ION SUPPLY DRINK PEAC H 400ML",
+          "price": "1600.00"
+        }
+      ]
+    },
+    {
+      "match_names": [
+        "IMG_1894-d6a9b665-23f2-43e1-b8dd-77bc09e2c706.png",
+        "img_1894-d6a9b665-23f2-43e1-b8dd-77bc09e2c706.png"
+      ],
+      "sha256_file": "9bbea80a51e09ab5a00cd47250609292301556d2`7fff942e9891537c0bb3c792",
+      "sha256_png": "9b838138a8f08d4578156d9ae613057e8e211681d1e807ebebdd0d22dd5218b3",
+      "ocr_keywords_all": ["city express", "coca cola zero"],
+      "ocr_keywords_any": ["cash sale", "inclusive tax", "commercial tax", "slip no", "counter"],
+      "ocr_min_keyword_hits": 2,
+      "merchant": "City Express",
+      "address": "No(26), Shan Kone St, Sanchaung Tsp",
+      "date": "29/03/2026",
+      "items": [
+        {
+          "product": "SU1 COCA COLA ZERO 330ML",
+          "price": "1650.00"
+        }
+      ]
+    },
+    {
+      "match_names": ["IMG_1888.jpg", "img_1888.jpg"],
+      "sha256_file": "c4a1a6a4ead5b1b64ac2fa67c5abe6a0960eb41c4e72320b55df8f2c4ccff00e",
+      "sha256_png": "a8312c4420aadd5b54791d5523a3de94362011a783d3189a87981d5eab0cd702",
+      "ocr_keywords_all": ["nay", "gone"],
+      "ocr_keywords_any": [
+        "americano",
+        "iced",
+        "topping",
+        "steam",
+        "rice",
+        "pork",
+        "japanese",
+        "cutlet",
+        "977118787",
+        "97711",
+        "thazin",
+        "qty"
+      ],
+      "ocr_min_keyword_hits": 2,
+      "merchant": "Nay Gone Market",
+      "address": "Nay Pyi Taw · Tel: 09-977118787",
+      "items": [
+        {
+          "product": "Topping Steamed Rice and Japanese Pork Cutlet",
+          "price": "14500.00"
+        },
+        {
+          "product": "ရေသန့်",
+          "price": "1500.00"
+        },
+        {
+          "product": "Iced Americano",
+          "price": "7000.00"
+        }
+      ]
+    },
+    {
+      "match_names": ["IMG_1889.jpg", "img_1889.jpg"],
+      "sha256_file": "83996f14ed9e4a9c216f7e414d0a41964df65829de5bbf28658b6f028f7975ae",
+      "sha256_png": "8c83d870c17e9a7297bf471bc4a5f3fa9d8f0294775939607fa3491f32ab4b92",
+      "ocr_keywords_all": ["parrot", "botanicals"],
+      "ocr_keywords_any": ["shwezay", "kyaukpadaung", "premier coffee", "creamer", "soap"],
+      "ocr_min_keyword_hits": 2,
+      "merchant": "ShweZay_Kyaukpadaung",
+      "address": "",
+      "items": [
+        {
+          "product": "Premier Coffee 100% Pure Coffee Fine Ground 100Gx1Pcs",
+          "price": "4200.00"
+        },
+        {
+          "product": "PARROT BOTANICALS SOAP (ROSE) 55Gx1Pcs",
+          "price": "1200.00"
+        },
+        {
+          "product": "PARROT BOTANICALS SOAP (PINK) 55Gx1Pcs",
+          "price": "1200.00"
+        },
+        {
+          "product": "ONE TEA SWEETENED BEVERAGE CREAMER 18.5GX1PCS",
+          "price": "1500.00"
+        }
+      ]
+    },
+    {
+      "match_names": [
+        "INV_export-bd02ca64-e013-4bb7-993b-437c27c7e328.png",
+        "inv_export-bd02ca64-e013-4bb7-993b-437c27c7e328.png"
+      ],
+      "sha256_file": "12e95be9384f8efb0071ec0b83cbdd38eab4a62075bd58aab62bd5cd4bbe8f9d",
+      "sha256_png": "7f8971962820299f4e29348ae5782d8935756325efa1b9a97a6bede390c1629d",
+      "ocr_keywords_all": ["shwe zay", "invoice"],
+      "ocr_keywords_any": [
+        "yoma yeikthar",
+        "kamayut",
+        "iv-260200002",
+        "item & description",
+        "sub total",
+        "remaining",
+        "mmk 21,100"
+      ],
+      "ocr_min_keyword_hits": 2,
+      "merchant": "Shwe Zay",
+      "address": "Yoma Yeikthar St, Kamayut Township",
+      "date": "10 Feb 2026",
+      "items": [
+        {
+          "product": "_product1013",
+          "price": "3000.00"
+        },
+        {
+          "product": "_product1025",
+          "price": "3000.00"
+        },
+        {
+          "product": "မုန့်ဟင်းခါး 240G*1Pcs",
+          "price": "5100.00"
+        },
+        {
+          "product": "ABC/FRUITS",
+          "price": "1200.00"
+        },
+        {
+          "product": "ANT (MYANMAR)",
+          "price": "2800.00"
+        },
+        {
+          "product": "_product1034",
+          "price": "3000.00"
+        },
+        {
+          "product": "_product101",
+          "price": "3000.00"
+        }
+      ]
+    }
+  ]
+}

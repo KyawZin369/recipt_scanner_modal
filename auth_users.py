@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import os
 import uuid
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from pathlib import Path
 
 try:
     import bcrypt
@@ -27,10 +29,35 @@ from receipt_scanner import _get_mongo_collection, _mongo_settings, set_last_mon
 
 JWT_ALG = "HS256"
 JWT_EXPIRE_DAYS = 30
+LOCAL_USERS_PATH = Path(__file__).resolve().parent / "users_local.json"
 
 
 def _users_collection_name() -> str:
     return os.getenv("MONGO_USERS_COLLECTION", "users").strip() or "users"
+
+
+def _allow_local_auth_fallback() -> bool:
+    """
+    Local JSON users are a development fallback only.
+    Default OFF to avoid "registered but not in MongoDB" confusion.
+    """
+    return False
+
+
+def _load_local_users() -> list[dict]:
+    if not LOCAL_USERS_PATH.is_file():
+        return []
+    try:
+        data = json.loads(LOCAL_USERS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_local_users(users: list[dict]) -> None:
+    LOCAL_USERS_PATH.write_text(json.dumps(users, indent=2), encoding="utf-8")
 
 
 def _get_users_collection():
@@ -98,10 +125,6 @@ def create_user(username: str, email: str, password: str) -> tuple[Optional[dict
     Insert user. Returns (user_doc_public, error_message).
     On success: (dict with id, username, email, access_token), None
     """
-    col = _get_users_collection()
-    if col is None:
-        return None, "Database unavailable"
-
     email_norm = (email or "").strip().lower()
     uname = (username or "").strip()
     if not uname or not email_norm or not password:
@@ -109,10 +132,24 @@ def create_user(username: str, email: str, password: str) -> tuple[Optional[dict
     if len(password) < 6:
         return None, "Password must be at least 6 characters"
 
-    if col.find_one({"email": email_norm}):
-        return None, "Email already registered"
-    if col.find_one({"username": uname}):
-        return None, "Username already taken"
+    col = _get_users_collection()
+    if col is None and not _allow_local_auth_fallback():
+        return None, "Database unavailable"
+    if col is not None:
+        try:
+            if col.find_one({"email": email_norm}):
+                return None, "Email already registered"
+            if col.find_one({"username": uname}):
+                return None, "Username already taken"
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users query failed: {e}")
+            return None, "Database unavailable"
+    else:
+        users = _load_local_users()
+        if any((u.get("email") or "").lower() == email_norm for u in users):
+            return None, "Email already registered"
+        if any((u.get("username") or "") == uname for u in users):
+            return None, "Username already taken"
 
     uid = str(uuid.uuid4())
     pw_hash = hash_password(password)
@@ -125,28 +162,38 @@ def create_user(username: str, email: str, password: str) -> tuple[Optional[dict
         "user_token": token,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    try:
-        col.insert_one(doc)
-    except PyMongoError as e:
-        return None, str(e)
+    if col is not None:
+        try:
+            col.insert_one(doc)
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users insert failed: {e}")
+            return None, "Database unavailable"
+    else:
+        users = _load_local_users()
+        users.append(doc)
+        _save_local_users(users)
 
     return {"user": user_public_dict(doc), "access_token": token}, None
 
 
 def authenticate_user(email: str, password: str) -> tuple[Optional[dict], Optional[str]]:
     """Returns ({user, access_token}, None) or (None, error)."""
-    col = _get_users_collection()
-    if col is None:
-        return None, "Database unavailable"
-
     email_norm = (email or "").strip().lower()
     if not email_norm or not password:
         return None, "email and password are required"
 
-    try:
-        doc = col.find_one({"email": email_norm})
-    except PyMongoError as e:
-        return None, str(e)
+    col = _get_users_collection()
+    if col is None and not _allow_local_auth_fallback():
+        return None, "Database unavailable"
+    if col is not None:
+        try:
+            doc = col.find_one({"email": email_norm})
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users query failed: {e}")
+            return None, "Database unavailable"
+    else:
+        users = _load_local_users()
+        doc = next((u for u in users if (u.get("email") or "").lower() == email_norm), None)
 
     if not doc or not verify_password(password, doc.get("password_hash", "")):
         return None, "Invalid email or password"
@@ -156,10 +203,18 @@ def authenticate_user(email: str, password: str) -> tuple[Optional[dict], Option
         return None, "Invalid user record"
 
     token = create_access_token(uid)
-    try:
-        col.update_one({"id": uid}, {"$set": {"user_token": token}})
-    except PyMongoError:
-        pass
+    if col is not None:
+        try:
+            col.update_one({"id": uid}, {"$set": {"user_token": token}})
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users update failed: {e}")
+    else:
+        users = _load_local_users()
+        for u in users:
+            if u.get("id") == uid:
+                u["user_token"] = token
+                break
+        _save_local_users(users)
 
     doc["user_token"] = token
     return {"user": user_public_dict(doc), "access_token": token}, None
@@ -167,12 +222,16 @@ def authenticate_user(email: str, password: str) -> tuple[Optional[dict], Option
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
     col = _get_users_collection()
-    if col is None:
+    if col is None and not _allow_local_auth_fallback():
         return None
-    try:
-        return col.find_one({"id": user_id}, {"_id": 0})
-    except PyMongoError:
-        return None
+    if col is not None:
+        try:
+            return col.find_one({"id": user_id}, {"_id": 0})
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users query failed: {e}")
+            return None
+    users = _load_local_users()
+    return next((u for u in users if u.get("id") == user_id), None)
 
 
 def verify_session_token(token: str) -> Optional[dict]:
@@ -191,10 +250,22 @@ def verify_session_token(token: str) -> Optional[dict]:
 
 def logout_user(user_id: str) -> bool:
     col = _get_users_collection()
-    if col is None:
+    if col is None and not _allow_local_auth_fallback():
         return False
-    try:
-        col.update_one({"id": user_id}, {"$set": {"user_token": ""}})
-        return True
-    except PyMongoError:
-        return False
+    if col is not None:
+        try:
+            col.update_one({"id": user_id}, {"$set": {"user_token": ""}})
+            return True
+        except PyMongoError as e:
+            set_last_mongo_error(f"MongoDB users update failed: {e}")
+            return False
+    users = _load_local_users()
+    changed = False
+    for u in users:
+        if u.get("id") == user_id:
+            u["user_token"] = ""
+            changed = True
+            break
+    if changed:
+        _save_local_users(users)
+    return changed

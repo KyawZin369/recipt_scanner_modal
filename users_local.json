@@ -1,0 +1,42 @@
+[
+  {
+    "id": "019dace8-2214-4490-b4d7-b92cc8687302",
+    "username": "localtest1",
+    "email": "localtest1@example.com",
+    "password_hash": "$2b$12$C/qs9mPz.3CLpIipR7QhcujTqPRCech5CYVV3bqcYQAwqykHCFYSW",
+    "user_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlkYWNlOC0yMjE0LTQ0OTAtYjRkNy1iOTJjYzg2ODczMDIiLCJleHAiOjE3Nzc0NzIzNTR9.oN4WSHvM1jY5vA_18RdG_wNFHbj6pW5Py3b2esJpn_Y",
+    "created_at": "2026-03-30T14:18:58.833452+00:00"
+  },
+  {
+    "id": "6508c63d-2d18-4ee9-8c50-79a9417a2744",
+    "username": "Testing",
+    "email": "testing@gmail.com",
+    "password_hash": "$2b$12$B96ZPGODiRHBankuLawDGOZDWa7joinqq7hKUdIhFJGoPvWQTwC92",
+    "user_token": "",
+    "created_at": "2026-04-07T13:19:50.126901+00:00"
+  },
+  {
+    "id": "7ec61ac0-6438-4748-a138-195b60387934",
+    "username": "kyawkyaw",
+    "email": "kyawkyaw@gmail.com",
+    "password_hash": "$2b$12$5PubUYycIAGT3B45IWrOSuR4LDdc95CMXUe/.7aZs6mI0ezf90Ai2",
+    "user_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3ZWM2MWFjMC02NDM4LTQ3NDgtYTEzOC0xOTViNjAzODc5MzQiLCJleHAiOjE3ODA2MzMwNjJ9.6GMMDNSfHzuYFKMYYxvFxLvqizdBT-Xzl-ZD4XTRAmY",
+    "created_at": "2026-04-17T06:04:01.591676+00:00"
+  },
+  {
+    "id": "a0f1af65-5d99-432e-b7cd-68621850c548",
+    "username": "kyawzinthet@gmail.com",
+    "email": "default123",
+    "password_hash": "$2b$12$kjrDLZeMxmWegAKuQKgKAeiGYe/H0LKq1vxi4wekjk3ifUdP2MTgO",
+    "user_token": "",
+    "created_at": "2026-05-06T04:41:31.254480+00:00"
+  },
+  {
+    "id": "76b0e9a7-a9f0-4d90-b568-aa7b47fad305",
+    "username": "traceuser",
+    "email": "trace_d4e923fa@example.com",
+    "password_hash": "$2b$12$6v0OP5ybCa6hZWtuIBncDOAIwEh/WNpdMvYhT7V/.OKNQyaZi4yea",
+    "user_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3NmIwZTlhNy1hOWYwLTRkOTAtYjU2OC1hYTdiNDdmYWQzMDUiLCJleHAiOjE3ODA2NDQ2ODh9.rCPGcn2ySLl5uCSug3OTuUS0TBowxP9TYdhnhrXsqNI",
+    "created_at": "2026-05-06T07:31:20.107271+00:00"
+  }
+]

@@ -29,7 +29,7 @@ if mode == "Receipt scanner (expenses)":
         st.image(image, caption="Receipt", use_container_width=True)
 
         with st.spinner("Scanning receipt…"):
-            receipt = extract_receipt(image)
+            receipt = extract_receipt(image, source_name=getattr(uploaded, "name", None) or "")
 
         st.subheader("Extracted receipt")
         if receipt.warnings:
@@ -41,6 +41,9 @@ if mode == "Receipt scanner (expenses)":
         with col1:
             if receipt.merchant:
                 st.write("**Merchant:**", receipt.merchant)
+            addr = getattr(receipt, "address", "") or ""
+            if addr:
+                st.write("**Address:**", addr)
             if receipt.date:
                 st.write("**Date:**", receipt.date)
             if currency:

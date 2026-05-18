@@ -3,8 +3,10 @@ AI Scanner API – model-only backend for use from Flutter (or any client).
 Exposes receipt scanning and text scanning via REST. Run this server and call it from your app.
 """
 import io
+import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
+import re
 
 from fastapi import Depends, FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -43,6 +45,7 @@ from receipt_scanner import (
     close_mongo_client,
     create_mart_in_mongo,
     extract_receipt,
+    parse_structured_from_ocr_text,
     add_receipt_to_expenses,
     get_last_mongo_error,
     get_mart_for_user,
@@ -52,6 +55,17 @@ from receipt_scanner import (
     _get_mongo_collection,
     ReceiptData,
 )
+from incomes import (
+    create_income_for_user,
+    get_income_by_id_for_user,
+    incomes_summary_for_user,
+    list_incomes_with_spending,
+)
+
+try:
+    from receipt_image_analyzer import analyze_receipt_from_image
+except Exception:  # pragma: no cover - optional until easyocr installed
+    analyze_receipt_from_image = None
 
 
 def _raise_auth_error(err: str, *, login: bool = False) -> None:
@@ -77,11 +91,43 @@ def _require_user(
     return user
 
 
+class IncomeOut(BaseModel):
+    id: str
+    name: str
+    amount: str
+    recurrence: str
+    description: str = ""
+    created_at: str = ""
+    spent_linked: float = 0.0
+    remaining_after_expenses: float = 0.0
+
+
+class IncomeCreate(BaseModel):
+    name: str
+    amount: str
+    recurrence: str = "one_time"
+    description: str = ""
+
+
+class IncomeSummaryOut(BaseModel):
+    count: int
+    total_all: float
+    monthly_recurring: float
+    weekly_recurring: float
+    yearly_recurring: float
+    total_spent_linked: float = 0.0
+    remaining_across_incomes: float = 0.0
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Reload .env so uvicorn inherits MONGO_URI etc. even if shell env was empty at import time.
     if load_dotenv is not None:
         load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
+    print(
+        "[ai-scanner-api] Income routes: GET /incomes/summary, GET /incomes, POST /incomes",
+        flush=True,
+    )
     yield
     close_mongo_client()
 
@@ -101,6 +147,76 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/incomes/summary", response_model=IncomeSummaryOut, tags=["incomes"])
+def get_incomes_summary(user: dict = Depends(_require_user)):
+    """Dashboard stats for the current user's income entries."""
+    summary = incomes_summary_for_user(user["id"])
+    if summary is None:
+        raise HTTPException(
+            status_code=503,
+            detail=get_last_mongo_error()
+            or "MongoDB is unavailable. Check MONGO_URI and credentials.",
+        )
+    return IncomeSummaryOut(**summary)
+
+
+@app.get("/incomes", tags=["incomes"])
+def get_incomes(user: dict = Depends(_require_user)):
+    """List all income entries for the authenticated user (newest first)."""
+    rows = list_incomes_with_spending(user["id"])
+    if rows is None:
+        raise HTTPException(
+            status_code=503,
+            detail=get_last_mongo_error()
+            or "MongoDB is unavailable. Check MONGO_URI and credentials.",
+        )
+    return {"incomes": rows}
+
+
+@app.post("/incomes", response_model=IncomeOut, tags=["incomes"])
+def create_income(body: IncomeCreate, user: dict = Depends(_require_user)):
+    """
+    Add an income record for the current user.
+
+    **recurrence**: `one_time` | `monthly` | `weekly` | `yearly` (how often this income applies).
+    """
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, detail="name is required")
+    amount = (body.amount or "").strip()
+    if not amount:
+        raise HTTPException(400, detail="amount is required")
+    if _get_mongo_collection() is None:
+        raise HTTPException(
+            status_code=503,
+            detail=get_last_mongo_error()
+            or "MongoDB is unavailable. Check MONGO_URI and credentials.",
+        )
+    doc = create_income_for_user(
+        user_id=user["id"],
+        name=name,
+        amount=amount,
+        recurrence=(body.recurrence or "one_time").strip(),
+        description=(body.description or "").strip(),
+    )
+    if doc is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save income. Check server logs and MongoDB.",
+        )
+    principal = _parse_amount_to_float(str(doc.get("amount", "") or ""))
+    return IncomeOut(
+        id=doc["id"],
+        name=doc["name"],
+        amount=doc["amount"],
+        recurrence=doc["recurrence"],
+        description=doc.get("description", "") or "",
+        created_at=doc.get("created_at", "") or "",
+        spent_linked=0.0,
+        remaining_after_expenses=round(max(0.0, principal), 2),
+    )
 
 
 def _read_upload(file: UploadFile) -> tuple[Image.Image, bytes]:
@@ -128,11 +244,89 @@ class ReceiptResponse(BaseModel):
     image_url: str = ""
     warnings: List[str]
     raw_text: str = ""
+    address: str = ""  # optional; set when Odoo POS training includes store address
+    phone: str = ""  # optional; detected from OCR (e.g. store phone)
+    total_amount: str = ""  # calculated from line-item amounts and returned to clients
+
+
+def _parse_amount_to_float(value: str) -> float:
+    """Parse an amount string like '1,500', '1500.00', 'Ks 1500'."""
+    if not value:
+        return 0.0
+    cleaned = re.sub(r"[^0-9.]", "", str(value))
+    if not cleaned:
+        return 0.0
+    # Keep first decimal point only if OCR produced multiple points.
+    if cleaned.count(".") > 1:
+        first = cleaned.find(".")
+        cleaned = cleaned[: first + 1] + cleaned[first + 1 :].replace(".", "")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
+
+
+def _format_total_amount(total: float) -> str:
+    """Format whole totals without decimals, otherwise keep 2 decimals."""
+    if abs(total - round(total)) < 1e-9:
+        return str(int(round(total)))
+    return f"{total:.2f}"
+
+
+def _receipt_data_to_response(receipt: ReceiptData, receipt_image_url: str) -> ReceiptResponse:
+    """Map ReceiptData + uploaded image URL to API response (shared by scan routes)."""
+    currency = getattr(receipt, "currency", "") or ""
+    items_out: List[ReceiptItemOut] = []
+    total_amount_value = 0.0
+    for it in receipt.items:
+        price = it.get("price", "")
+        total_amount_value += _parse_amount_to_float(price)
+        price_with_currency = f"{price} {currency}".strip() if currency else price
+        items_out.append(
+            ReceiptItemOut(
+                product=it.get("product", ""),
+                price=price,
+                price_with_currency=price_with_currency,
+                needs_review=it.get("needs_review", False),
+            )
+        )
+    include_extra = os.getenv("SCAN_INCLUDE_EXTRA", "").lower() in ("1", "true", "yes")
+    return ReceiptResponse(
+        merchant=receipt.merchant,
+        date=receipt.date,
+        currency=currency,
+        items=items_out,
+        subtotal=receipt.subtotal if include_extra else "",
+        tax=receipt.tax if include_extra else "",
+        image_url=receipt_image_url,
+        warnings=receipt.warnings if include_extra else [],
+        raw_text=receipt.raw_text if include_extra else "",
+        address=(getattr(receipt, "address", "") or "") if include_extra else "",
+        phone=(getattr(receipt, "phone", "") or ""),
+        total_amount=_format_total_amount(total_amount_value),
+    )
 
 
 class TextScanResponse(BaseModel):
     text: str
     summary: str
+
+
+class ClientTextScanRequest(BaseModel):
+    text: str
+    filename: str = ""
+
+
+class ClientTextScanResponse(BaseModel):
+    text: str
+    summary: str
+    lines: List[str]
+    filename: str = ""
+
+
+class ClientReceiptTextScanRequest(BaseModel):
+    text: str
+    filename: str = ""
 
 
 class ExpenseEntry(BaseModel):
@@ -144,6 +338,12 @@ class ExpenseEntry(BaseModel):
     currency: str = ""
     image_url: str = ""
     mart_id: Optional[str] = None  # optional; must belong to the authenticated user
+    linked_income_id: Optional[str] = None  # optional; subtract this expense from that income
+    linked_income_amount: Optional[str] = None  # optional; defaults to sum of line items
+
+
+def _sum_expense_line_items(payload: ExpenseEntry) -> float:
+    return sum(_parse_amount_to_float(it.price) for it in payload.items)
 
 
 class ReceiptImageUploadResponse(BaseModel):
@@ -190,7 +390,11 @@ class AuthResponse(BaseModel):
 @app.get("/health")
 def health():
     """Check if the API and OCR are available."""
-    return {"status": "ok", "service": "ai-scanner"}
+    return {
+        "status": "ok",
+        "service": "ai-scanner",
+        "incomes_api": True,
+    }
 
 
 @app.get("/health/db")
@@ -361,6 +565,9 @@ async def scan_receipt(image: UploadFile = File(...)):
     """
     Upload a receipt image; get structured data (merchant, date, line items with product name and price).
     Prices are strict—only exact OCR values, no guessing.
+
+    Optional: set ENABLE_ODOO_TRAINING=1 to apply data/odoo_pos_training.json overrides (default off).
+    For bilingual OCR set RECEIPT_TESSERACT_LANG=eng+mya (after installing Tesseract `mya`).
     """
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(400, "File must be an image (e.g. image/jpeg, image/png)")
@@ -368,31 +575,55 @@ async def scan_receipt(image: UploadFile = File(...)):
         img, contents = _read_upload(image)
     except Exception as e:
         raise HTTPException(400, f"Invalid image: {e}")
-    receipt = extract_receipt(np.array(img))
+    # Fast OCR for API latency (~2–8s typical vs ~40–90s multi-pass). Set API_SLOW_RECEIPT_OCR=1 for max quality.
+    _slow = os.getenv("API_SLOW_RECEIPT_OCR", "").lower() in ("1", "true", "yes")
+    receipt = extract_receipt(
+        np.array(img),
+        source_name=image.filename or "",
+        fast_ocr=not _slow,
+    )
     uploaded_name = image.filename or "receipt.jpg"
     receipt_image_url = upload_receipt_image_bytes(contents, uploaded_name)
-    currency = getattr(receipt, "currency", "") or ""
-    items_out = []
-    for it in receipt.items:
-        price = it.get("price", "")
-        price_with_currency = f"{price} {currency}".strip() if currency else price
-        items_out.append(ReceiptItemOut(
-            product=it.get("product", ""),
-            price=price,
-            price_with_currency=price_with_currency,
-            needs_review=it.get("needs_review", False),
-        ))
-    return ReceiptResponse(
-        merchant=receipt.merchant,
-        date=receipt.date,
-        currency=currency,
-        items=items_out,
-        subtotal=receipt.subtotal,
-        tax=receipt.tax,
-        image_url=receipt_image_url,
-        warnings=receipt.warnings,
-        raw_text=receipt.raw_text,
-    )
+    return _receipt_data_to_response(receipt, receipt_image_url)
+
+
+@app.post("/scan/receipt/analyze", response_model=ReceiptResponse)
+async def scan_receipt_analyze(image: UploadFile = File(...)):
+    """
+    Analyze receipt image on the server first: **EasyOCR** reads the image, then the same
+    structured parser extracts merchant, phone, date, currency, and line items.
+    Prefer this from Flutter when you want image-first analysis before saving expenses.
+
+    Requires `pip install easyocr` (first run may download model weights).
+    """
+    if analyze_receipt_from_image is None:
+        raise HTTPException(
+            503,
+            "EasyOCR is not installed. Run: pip install easyocr",
+        )
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(400, "File must be an image (e.g. image/jpeg, image/png)")
+    try:
+        img, contents = _read_upload(image)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid image: {e}") from e
+    # This route is for accuracy: prefer EasyOCR + structured parse first.
+    # Fast Tesseract often misreads thermal receipts (wrong merchant / junk line items).
+    receipt: ReceiptData
+    try:
+        receipt, _ = analyze_receipt_from_image(
+            np.array(img), source_name=image.filename or ""
+        )
+    except Exception:
+        _slow = os.getenv("API_SLOW_RECEIPT_OCR", "").lower() in ("1", "true", "yes")
+        receipt = extract_receipt(
+            np.array(img),
+            source_name=image.filename or "",
+            fast_ocr=not _slow,
+        )
+    uploaded_name = image.filename or "receipt.jpg"
+    receipt_image_url = upload_receipt_image_bytes(contents, uploaded_name)
+    return _receipt_data_to_response(receipt, receipt_image_url)
 
 
 @app.post("/scan/text", response_model=TextScanResponse)
@@ -407,6 +638,40 @@ async def scan_text(image: UploadFile = File(...)):
     text = extract_text(np.array(img))
     summary = generate_output_from_text(text)
     return TextScanResponse(text=text, summary=summary)
+
+
+@app.post("/scan/text/client", response_model=ClientTextScanResponse)
+def scan_text_from_client(payload: ClientTextScanRequest):
+    """
+    Accept OCR text extracted on-device (e.g. Flutter ML Kit) and return a normalized response.
+    """
+    raw_text = (payload.text or "").strip()
+    summary = generate_output_from_text(raw_text)
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    return ClientTextScanResponse(
+        text=raw_text,
+        summary=summary,
+        lines=lines,
+        filename=(payload.filename or "").strip(),
+    )
+
+
+@app.post("/scan/receipt/client-text", response_model=ReceiptResponse)
+def scan_receipt_from_client_text(payload: ClientReceiptTextScanRequest):
+    """
+    Parse receipt fields from OCR text generated on-device (ML Kit, etc.).
+    This is a robust fallback when server-side OCR is unavailable or inaccurate.
+    """
+    raw_text = (payload.text or "").strip()
+    if not raw_text:
+        raise HTTPException(400, "text is required")
+    receipt = parse_structured_from_ocr_text(
+        raw_text,
+        image=None,
+        source_name=(payload.filename or "").strip(),
+        source_path=None,
+    )
+    return _receipt_data_to_response(receipt, "")
 
 
 @app.post("/expenses")
@@ -425,6 +690,34 @@ async def add_expense(
                 detail="Unknown mart or mart does not belong to your account.",
             )
         mart_name = (doc.get("name") or "").strip()
+
+    linked_id = (payload.linked_income_id or "").strip() or None
+    linked_amt_str = ""
+    if linked_id:
+        inc_doc = get_income_by_id_for_user(user["id"], linked_id)
+        if not inc_doc:
+            raise HTTPException(
+                status_code=400,
+                detail="Unknown income or income does not belong to your account.",
+            )
+        line_sum = _sum_expense_line_items(payload)
+        override = (payload.linked_income_amount or "").strip()
+        if override:
+            amt_val = _parse_amount_to_float(override)
+            if amt_val <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="linked_income_amount must be positive.",
+                )
+            linked_amt_str = _format_total_amount(amt_val)
+        else:
+            if line_sum <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot link to income: receipt line items sum to zero.",
+                )
+            linked_amt_str = _format_total_amount(line_sum)
+
     receipt = ReceiptData(
         merchant=payload.merchant,
         date=payload.date,
@@ -438,6 +731,9 @@ async def add_expense(
         warnings=[],
         mart_id=mart_id,
         mart_name=mart_name,
+        phone="",
+        linked_income_id=linked_id or "",
+        linked_income_amount=linked_amt_str,
     )
     add_receipt_to_expenses(receipt, user_id=user["id"])
     return {"status": "added"}
@@ -475,3 +771,11 @@ async def get_receipts(
             or "MongoDB is unavailable. Check MONGO_URI, Atlas IP allowlist, and credentials.",
         )
     return {"receipts": receipts, "source": "mongodb"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Run from this file's directory so `import api` resolves to this project (not another `api` on PYTHONPATH).
+    os.chdir(Path(__file__).resolve().parent)
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

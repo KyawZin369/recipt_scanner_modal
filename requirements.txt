@@ -16,6 +16,9 @@ supabase>=2.0.0
 bcrypt>=4.1.0
 PyJWT>=2.8.0
 
+# Receipt image OCR (CNN-based; used by /scan/receipt/analyze before structured parse)
+easyocr>=1.7.0
+
 # Optional: TensorFlow (for custom AI models; scanner uses sklearn on macOS to avoid crashes)
 # tensorflow>=2.12.0
 
